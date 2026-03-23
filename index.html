@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Curate — あなたのニュースキュレーター</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="apple-touch-icon" href="icon.png">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#8b5c3e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Curate">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:           #f7f4f0;
+      --surface:      #ffffff;
+      --surface2:     #f0ebe4;
+      --border:       #e5ddd5;
+      --text:         #2c2420;
+      --text2:        #8a7060;
+      --accent:       #8b5c3e;
+      --accent-light: #f5ede6;
+      --accent-hover: #6e4830;
+      --shadow:       0 2px 10px rgba(139,92,62,.08);
+      --shadow-hover: 0 6px 22px rgba(139,92,62,.16);
+
+      --c-ai:        #7c4dcc;
+      --c-marke:     #0891b2;
+      --c-short:     #e11d48;
+      --c-jiko:      #059669;
+      --c-keiei:     #d97706;
+      --c-leader:    #2563eb;
+      --c-health:    #db2777;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Noto Sans JP', -apple-system, sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ════════════════ LIST VIEW ════════════════ */
+    #listView { display: block; }
+
+    /* ── Header ── */
+    header {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(247,244,240,.94);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+    .logo { font-size: 1.2rem; font-weight: 700; letter-spacing: -0.5px; color: var(--text); }
+    .logo span { color: var(--accent); }
+    .header-right { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    #articleCount { font-size: 0.78rem; color: var(--text2); }
+    #articleCount b { color: var(--text); }
+    #countdown { font-size: 0.74rem; color: var(--text2); white-space: nowrap; }
+
+    #aiBadge {
+      display: flex; align-items: center; gap: 5px;
+      padding: 6px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 600;
+      cursor: pointer; border: none; font-family: inherit; transition: all .2s;
+    }
+    #aiBadge.connected    { background: var(--accent-light); color: var(--accent); border: 1px solid #d4a88a; }
+    #aiBadge.disconnected { background: var(--surface2); color: var(--text2); border: 1px solid var(--border); }
+    #aiBadge .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    #aiBadge.connected .dot    { background: #22c55e; }
+    #aiBadge.disconnected .dot { background: #94a3b8; }
+
+    #refreshBtn {
+      background: var(--accent); color: #fff; border: none; border-radius: 8px;
+      padding: 8px 15px; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+      display: flex; align-items: center; gap: 5px; font-family: inherit; transition: background .2s;
+    }
+    #refreshBtn:hover    { background: var(--accent-hover); }
+    #refreshBtn:disabled { opacity: .4; cursor: not-allowed; }
+    #refreshBtn.spinning svg { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Filter bar ── */
+    .filter-bar {
+      padding: 10px 20px; display: flex; gap: 7px; flex-wrap: wrap;
+      border-bottom: 1px solid var(--border); background: var(--surface);
+      overflow-x: auto; -webkit-overflow-scrolling: touch;
+    }
+    .cat-btn {
+      border: 1px solid var(--border); background: transparent;
+      color: var(--text2); border-radius: 20px; padding: 5px 13px;
+      font-size: 0.78rem; font-weight: 500; cursor: pointer; transition: all .15s;
+      white-space: nowrap; font-family: inherit; flex-shrink: 0;
+    }
+    .cat-btn:hover  { border-color: var(--accent); color: var(--accent); }
+    .cat-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    /* ── Main ── */
+    main { padding: 20px; max-width: 1440px; margin: 0 auto; }
+
+    /* ── Loading ── */
+    #loadingOverlay {
+      display: none; flex-direction: column; align-items: center;
+      justify-content: center; gap: 16px; padding: 80px 0; color: var(--text2);
+    }
+    #loadingOverlay.show { display: flex; }
+    .spinner {
+      width: 34px; height: 34px;
+      border: 3px solid var(--border); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin .8s linear infinite;
+    }
+    .progress-wrap { width: 220px; background: var(--surface2); border-radius: 4px; height: 4px; overflow: hidden; }
+    .progress-bar  { height: 100%; background: var(--accent); border-radius: 4px; transition: width .3s; }
+
+    /* ── Error ── */
+    #errorMsg {
+      display: none; background: #fef2f2; border: 1px solid #fecaca;
+      border-radius: 10px; padding: 11px 15px; margin-bottom: 18px;
+      color: #b91c1c; font-size: .8rem;
+    }
+    #errorMsg.show { display: block; }
+
+    /* ── Grid: PC 4col / tablet 2col / mobile 1col ── */
+    #grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+    @media (max-width: 1100px) { #grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 780px)  { #grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 500px)  { #grid { grid-template-columns: 1fr; gap: 12px; } }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex; flex-direction: column;
+      box-shadow: var(--shadow);
+      transition: transform .2s, box-shadow .2s;
+      animation: fadeUp .3s ease both;
+    }
+    .card:hover { transform: translateY(-3px); box-shadow: var(--shadow-hover); }
+    @keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+
+    /* カード上部リンク — flex:1 でフッターを常に下端に押し出す */
+    .card-link { text-decoration: none; color: inherit; display: flex; flex-direction: column; flex: 1; }
+
+    /* 画像 */
+    .card-img {
+      width: 100%; aspect-ratio: 16/9; object-fit: cover;
+      background: var(--surface2); display: block;
+    }
+    .card-img-placeholder {
+      width: 100%; aspect-ratio: 16/9;
+      background: #ede8e2;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 6px;
+    }
+    .card-img-placeholder span {
+      font-size: 0.72rem; font-weight: 500; color: #b5a898; letter-spacing: .5px;
+    }
+    .card-img-placeholder svg { opacity: .3; }
+
+    /* ボディ */
+    .card-body { padding: 12px 14px 10px; flex: 1; display: flex; flex-direction: column; gap: 7px; }
+    .card-meta  { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+    .cat-tag {
+      font-size: 0.67rem; font-weight: 700; padding: 2px 8px;
+      border-radius: 4px; color: #fff; letter-spacing: .2px; flex-shrink: 0;
+    }
+    .source { font-size: 0.71rem; color: var(--text2); }
+    .card-title {
+      font-size: 0.88rem; font-weight: 600; line-height: 1.55; color: var(--text);
+      display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .card-title:hover { color: var(--accent); }
+
+    /* Summary bar in chat view */
+    #chatSummaryBar {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 10px 16px; flex-shrink: 0;
+    }
+    #summaryBtn {
+      background: var(--accent); color: #fff; border: none; border-radius: 8px;
+      padding: 8px 16px; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+      font-family: inherit; transition: background .15s;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    #summaryBtn:hover    { background: var(--accent-hover); }
+    #summaryBtn:disabled { opacity: .5; cursor: not-allowed; }
+    .summary-bar-label { font-size: 0.67rem; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
+    .summary-bar-text  { font-size: 0.81rem; color: #5a4a3a; line-height: 1.65; }
+
+    /* 通常description（APIなし時） */
+    .card-desc {
+      font-size: 0.77rem; color: var(--text2); line-height: 1.55;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+
+    .card-date { font-size: 0.69rem; color: var(--text2); margin-top: auto; padding-top: 2px; }
+
+    /* フッター */
+    .card-footer {
+      padding: 9px 14px 12px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-top: 1px solid var(--border);
+    }
+    .btn-chat {
+      display: flex; align-items: center; gap: 4px;
+      background: var(--accent-light); color: var(--accent);
+      border: 1px solid #d4a88a; border-radius: 8px;
+      padding: 6px 11px; font-size: 0.76rem; font-weight: 600;
+      cursor: pointer; transition: all .15s; font-family: inherit;
+      white-space: nowrap;
+    }
+    .btn-chat:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .btn-read {
+      font-size: 0.73rem; color: var(--text2); text-decoration: none;
+      transition: color .15s; white-space: nowrap;
+    }
+    .btn-read:hover { color: var(--accent); }
+
+    /* Empty */
+    #emptyMsg { display: none; text-align: center; padding: 60px 0; color: var(--text2); }
+    #emptyMsg.show { display: block; }
+
+    /* ════════════════ CHAT VIEW ════════════════ */
+    #chatView {
+      display: none; flex-direction: column;
+      height: 100dvh; height: 100vh;
+      background: var(--bg);
+      position: fixed; inset: 0; z-index: 200;
+    }
+    #chatView.show { display: flex; }
+
+    .chat-header {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 12px 16px; display: flex; align-items: flex-start; gap: 10px;
+      flex-shrink: 0;
+    }
+    .chat-back {
+      background: none; border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text2); padding: 6px 11px; font-size: 0.8rem; cursor: pointer;
+      display: flex; align-items: center; gap: 4px; white-space: nowrap;
+      font-family: inherit; transition: all .15s; flex-shrink: 0; margin-top: 2px;
+    }
+    .chat-back:hover { border-color: var(--accent); color: var(--accent); }
+    .chat-article-info { flex: 1; min-width: 0; }
+    .chat-article-source { font-size: 0.71rem; color: var(--text2); margin-bottom: 2px; }
+    .chat-article-title {
+      font-size: 0.86rem; font-weight: 600; color: var(--text);
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .chat-article-link {
+      font-size: 0.7rem; color: var(--accent); text-decoration: none; margin-top: 2px; display: inline-block;
+    }
+    .chat-article-link:hover { text-decoration: underline; }
+
+    .chat-messages {
+      flex: 1; overflow-y: auto; padding: 16px;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .msg { display: flex; gap: 8px; max-width: 82%; }
+    .msg.user      { align-self: flex-end; flex-direction: row-reverse; }
+    .msg.assistant { align-self: flex-start; }
+    .msg-avatar {
+      width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.95rem; margin-top: 2px;
+    }
+    .msg.user .msg-avatar      { background: var(--accent); color: #fff; font-size: 0.65rem; font-weight: 700; }
+    .msg.assistant .msg-avatar { background: var(--accent-light); }
+    .msg-bubble {
+      padding: 10px 13px; border-radius: 14px;
+      font-size: 0.84rem; line-height: 1.65; white-space: pre-wrap;
+    }
+    .msg.user .msg-bubble      { background: var(--accent); color: #fff; border-bottom-right-radius: 3px; }
+    .msg.assistant .msg-bubble { background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 3px; box-shadow: var(--shadow); }
+
+    .typing-dot { display: inline-block; animation: blink 1.2s infinite; }
+    .typing-dot:nth-child(2) { animation-delay: .2s; }
+    .typing-dot:nth-child(3) { animation-delay: .4s; }
+    @keyframes blink { 0%,80%,100% { opacity:.2; } 40% { opacity:1; } }
+
+    .chat-input-wrap {
+      background: var(--surface); border-top: 1px solid var(--border);
+      padding: 12px 16px; display: flex; gap: 8px; flex-shrink: 0;
+      padding-bottom: max(12px, env(safe-area-inset-bottom));
+    }
+    #chatInput {
+      flex: 1; border: 1px solid var(--border); border-radius: 10px;
+      padding: 10px 13px; font-size: 0.84rem; font-family: inherit;
+      background: var(--bg); color: var(--text); resize: none; line-height: 1.5;
+      min-height: 44px; max-height: 130px;
+    }
+    #chatInput:focus { outline: none; border-color: var(--accent); }
+    #chatSendBtn {
+      background: var(--accent); color: #fff; border: none; border-radius: 10px;
+      padding: 10px 15px; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+      font-family: inherit; transition: background .15s; flex-shrink: 0;
+    }
+    #chatSendBtn:hover    { background: var(--accent-hover); }
+    #chatSendBtn:disabled { opacity: .4; cursor: not-allowed; }
+
+    .no-api-notice {
+      background: var(--surface2); border-radius: 10px; padding: 20px;
+      text-align: center; color: var(--text2); font-size: 0.84rem;
+      margin: 16px;
+    }
+    .no-api-notice button {
+      margin-top: 12px; background: var(--accent); color: #fff; border: none;
+      border-radius: 8px; padding: 8px 16px; font-size: 0.82rem;
+      cursor: pointer; font-family: inherit;
+    }
+
+    /* ════════════════ API KEY MODAL ════════════════ */
+    #modalOverlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(44,36,32,.5);
+      backdrop-filter: blur(4px); z-index: 999;
+      align-items: center; justify-content: center; padding: 20px;
+    }
+    #modalOverlay.show { display: flex; }
+    .modal {
+      background: var(--surface); border-radius: 16px; padding: 26px;
+      width: min(460px, 100%); box-shadow: 0 20px 60px rgba(0,0,0,.18);
+    }
+    .modal h2 { font-size: 1rem; font-weight: 700; margin-bottom: 6px; }
+    .modal p  { font-size: 0.81rem; color: var(--text2); margin-bottom: 18px; line-height: 1.65; }
+    .modal label { display: block; font-size: 0.79rem; font-weight: 600; margin-bottom: 5px; }
+    .modal input {
+      width: 100%; border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px 12px; font-size: 0.84rem; font-family: inherit;
+      background: var(--bg); color: var(--text); margin-bottom: 16px;
+    }
+    .modal input:focus { outline: none; border-color: var(--accent); }
+    .modal-btns { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
+    .btn-cancel { background: var(--surface2); color: var(--text2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 15px; font-size: 0.81rem; cursor: pointer; font-family: inherit; }
+    .btn-save   { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 8px 17px; font-size: 0.81rem; font-weight: 600; cursor: pointer; font-family: inherit; }
+    .btn-save:hover { background: var(--accent-hover); }
+    .btn-clear  { background: none; color: #b91c1c; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 13px; font-size: 0.81rem; cursor: pointer; font-family: inherit; margin-right: auto; }
+
+    /* ── Mobile tweaks ── */
+    @media (max-width: 500px) {
+      header { padding: 10px 14px; }
+      .filter-bar { padding: 8px 14px; }
+      main { padding: 14px; }
+      #countdown { display: none; }
+      .card-title { font-size: 0.92rem; }
+      .msg { max-width: 92%; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ════════════════ LIST VIEW ════════════════ -->
+<div id="listView">
+  <header>
+    <span class="logo">Cu<span>rate</span></span>
+    <div class="header-right">
+      <span id="articleCount"></span>
+      <span id="countdown"></span>
+      <button id="aiBadge" class="disconnected" onclick="openApiModal()">
+        <span class="dot"></span>
+        <span id="aiBadgeLabel">AI設定</span>
+      </button>
+      <button id="refreshBtn" onclick="refresh()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
+          <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
+        </svg>
+        更新
+      </button>
+    </div>
+  </header>
+
+  <div class="filter-bar">
+    <button class="cat-btn active" onclick="filterCat('all',this)">すべて</button>
+    <button class="cat-btn" onclick="filterCat('AI',this)">AI</button>
+    <button class="cat-btn" onclick="filterCat('マーケ',this)">マーケ</button>
+    <button class="cat-btn" onclick="filterCat('ショート動画',this)">ショート動画</button>
+    <button class="cat-btn" onclick="filterCat('自己投資',this)">自己投資</button>
+    <button class="cat-btn" onclick="filterCat('経営・起業',this)">経営・起業</button>
+    <button class="cat-btn" onclick="filterCat('リーダー思考',this)">リーダー思考</button>
+    <button class="cat-btn" onclick="filterCat('健康・美容',this)">健康・美容</button>
+  </div>
+
+  <main>
+    <div id="errorMsg"></div>
+    <div id="loadingOverlay">
+      <div class="spinner"></div>
+      <div style="font-size:.83rem;color:var(--text2)">フィードを取得中… <span id="progressLabel">0 / 15</span></div>
+      <div class="progress-wrap"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
+    </div>
+    <div id="grid"></div>
+    <div id="emptyMsg">このカテゴリーの記事は今回のキュレーションに含まれていません。</div>
+  </main>
+</div>
+
+<!-- ════════════════ CHAT VIEW ════════════════ -->
+<div id="chatView">
+  <div class="chat-header">
+    <button class="chat-back" onclick="closeChatView()">← 戻る</button>
+    <div class="chat-article-info">
+      <div class="chat-article-source" id="chatArticleSource"></div>
+      <div class="chat-article-title" id="chatArticleTitle"></div>
+      <a class="chat-article-link" id="chatArticleLink" href="#" target="_blank" rel="noopener">元記事を開く ↗</a>
+    </div>
+  </div>
+  <div id="chatSummaryBar"></div>
+  <div class="chat-messages" id="chatMessages"></div>
+  <div id="chatInputArea" class="chat-input-wrap">
+    <textarea id="chatInput" placeholder="この記事について質問する…" rows="1"
+      onkeydown="chatKeydown(event)" oninput="autoResize(this)"></textarea>
+    <button id="chatSendBtn" onclick="sendChat()">送信</button>
+  </div>
+</div>
+
+<!-- ════════════════ API KEY MODAL ════════════════ -->
+<div id="modalOverlay" onclick="closeModalOutside(event)">
+  <div class="modal">
+    <h2>Claude API 設定</h2>
+    <p>Anthropic の API キーを入力してください。キーはブラウザの localStorage にのみ保存され、外部サーバーには送信されません。</p>
+    <label for="apiKeyInput">API キー</label>
+    <input type="password" id="apiKeyInput" placeholder="sk-ant-..." autocomplete="off">
+    <div class="modal-btns">
+      <button class="btn-clear" id="btnClear" onclick="clearApiKey()" style="display:none">削除</button>
+      <button class="btn-cancel" onclick="closeApiModal()">キャンセル</button>
+      <button class="btn-save" onclick="saveApiKey()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════
+//  CONSTANTS
+// ═══════════════════════════════════════
+const PROXY          = 'https://curate-rss-proxy.onrender.com/rss-proxy';
+const CLAUDE_API     = 'https://api.anthropic.com/v1/messages';
+const CLAUDE_MODEL   = 'claude-sonnet-4-20250514';
+const TOTAL          = 20;
+const INTERVAL_MS    = 60 * 60 * 1000;
+
+// ── 動作確認済みフィード（プロキシ経由200 OK） ──
+const FEEDS = [
+  // AI
+  { category: 'AI',          source: 'AISmiley',          url: 'https://aismiley.co.jp/feed/' },
+  { category: 'AI',          source: 'AINOW',             url: 'https://ainow.ai/feed/' },
+  // マーケ
+  { category: 'マーケ',       source: 'MarkeZine',         url: 'https://markezine.jp/rss/new/20/index.xml' },
+  { category: 'マーケ',       source: 'Web担当者Forum',    url: 'https://webtan.impress.co.jp/rss.xml' },
+  { category: 'マーケ',       source: 'DIGIDAY',           url: 'https://digiday.jp/feed/' },
+  // ショート動画
+  { category: 'ショート動画',  source: 'CreatorZine',       url: 'https://creatorzine.jp/rss/new/index.xml' },
+  { category: 'ショート動画',  source: 'TikTok for Business', url: 'https://tiktok-for-business.co.jp/feed/' },
+  // 自己投資
+  { category: '自己投資',     source: 'Lifehacker JP',     url: 'https://www.lifehacker.jp/feed/index.xml' },
+  { category: '自己投資',     source: 'StudyHacker',       url: 'https://studyhacker.net/feed' },
+  // 経営・起業
+  { category: '経営・起業',   source: 'Diamond.jp',        url: 'https://diamond.jp/list/feed/' },
+  { category: '経営・起業',   source: 'ミラサポplus',       url: 'https://mirasapo-plus.go.jp/rss_feed/' },
+  // リーダー思考
+  { category: 'リーダー思考', source: '東洋経済',           url: 'https://toyokeizai.net/list/feed/rss' },
+  { category: 'リーダー思考', source: 'Business Insider JP', url: 'https://www.businessinsider.jp/feed/index.xml' },
+  // 健康・美容
+  { category: '健康・美容',   source: 'Nikkei Gooday',     url: 'https://gooday.nikkei.co.jp/rss/all.rdf' },
+  { category: '健康・美容',   source: 'Melos',             url: 'https://melos.media/feed/' },
+];
+
+const CAT_COLORS = {
+  'AI':         '#7c4dcc',
+  'マーケ':      '#0891b2',
+  'ショート動画': '#e11d48',
+  '自己投資':    '#059669',
+  '経営・起業':  '#d97706',
+  'リーダー思考': '#2563eb',
+  '健康・美容':  '#db2777',
+};
+
+// ═══════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════
+let allArticles   = [];
+let currentCat    = 'all';
+let nextRefreshAt = null;
+let cdTimer       = null;
+let rfTimer       = null;
+let summaryCache  = {};   // populated from localStorage in INIT
+let chatHistory   = [];
+let chatArticle   = null;
+
+// ── localStorage summary cache helpers ──
+const SUMMARY_CACHE_KEY = 'curate_summary_cache';
+function loadSummaryCache() {
+  try { return JSON.parse(localStorage.getItem(SUMMARY_CACHE_KEY) || '{}'); } catch { return {}; }
+}
+function saveSummaryCache() {
+  try { localStorage.setItem(SUMMARY_CACHE_KEY, JSON.stringify(summaryCache)); } catch {}
+}
+
+// ═══════════════════════════════════════
+//  API KEY
+// ═══════════════════════════════════════
+const getApiKey = () => localStorage.getItem('claude_api_key') || '';
+
+function updateAiBadge() {
+  const badge = document.getElementById('aiBadge');
+  const label = document.getElementById('aiBadgeLabel');
+  const has   = !!getApiKey();
+  badge.className  = has ? 'connected' : 'disconnected';
+  label.textContent = has ? 'API接続済み' : 'API設定';
+}
+
+function openApiModal() {
+  const key = getApiKey();
+  document.getElementById('apiKeyInput').value = key;
+  document.getElementById('btnClear').style.display = key ? 'block' : 'none';
+  document.getElementById('modalOverlay').classList.add('show');
+}
+function closeApiModal() { document.getElementById('modalOverlay').classList.remove('show'); }
+function closeModalOutside(e) { if (e.target.id === 'modalOverlay') closeApiModal(); }
+
+function saveApiKey() {
+  const val = document.getElementById('apiKeyInput').value.trim();
+  if (!val) { alert('APIキーを入力してください。'); return; }
+  localStorage.setItem('claude_api_key', val);
+  closeApiModal();
+  updateAiBadge();
+  if (allArticles.length) renderArticles(currentCat);
+}
+function clearApiKey() {
+  localStorage.removeItem('claude_api_key');
+  summaryCache = {};
+  localStorage.removeItem(SUMMARY_CACHE_KEY);
+  closeApiModal();
+  updateAiBadge();
+  if (allArticles.length) renderArticles(currentCat);
+}
+
+// ═══════════════════════════════════════
+//  RSS PARSE
+// ═══════════════════════════════════════
+function parseRSS(xml, feedMeta) {
+  let doc;
+  try {
+    const p = new DOMParser();
+    doc = p.parseFromString(xml, 'application/xml');
+    if (doc.querySelector('parsererror')) doc = p.parseFromString(xml, 'text/html');
+  } catch { return []; }
+
+  const isAtom = !!doc.querySelector('feed');
+  const items  = isAtom ? doc.querySelectorAll('entry') : doc.querySelectorAll('item');
+  const out    = [];
+
+  items.forEach(item => {
+    try {
+      let title='', link='', desc='', pub='', img=null;
+      if (isAtom) {
+        title = tx(item,'title');
+        const le = item.querySelector('link[rel="alternate"]') || item.querySelector('link');
+        link  = le?.getAttribute('href') || le?.textContent?.trim() || '';
+        desc  = tx(item,'summary') || tx(item,'content');
+        pub   = tx(item,'published') || tx(item,'updated');
+      } else {
+        title = tx(item,'title');
+        const le = item.getElementsByTagName('link')[0];
+        if (le) { link = le.textContent?.trim() || le.getAttribute('href') || ''; }
+        if (!link && le?.nextSibling) link = le.nextSibling.textContent?.trim() || '';
+        desc  = tx(item,'description');
+        pub   = tx(item,'pubDate') || tx(item,'dc:date');
+      }
+      // image
+      const ns = 'http://search.yahoo.com/mrss/';
+      const mt = item.getElementsByTagNameNS(ns,'thumbnail')[0];
+      const mc = item.getElementsByTagNameNS(ns,'content')[0];
+      const en = item.querySelector('enclosure[type^="image"]');
+      if      (mt) img = mt.getAttribute('url');
+      else if (mc && mc.getAttribute('type')?.startsWith('image')) img = mc.getAttribute('url');
+      else if (en) img = en.getAttribute('url');
+      else {
+        // data-src（遅延読み込み）を優先し、base64は除外
+        const m = desc.match(/<img[^>]+data-src=["']([^"'>]+)["']/i)
+               || desc.match(/<img[^>]+src=["']([^"'>]+)["']/i);
+        if (m && !m[1].startsWith('data:')) img = m[1];
+      }
+
+      // HTMLエンティティを正しい文字に変換してから保存
+      title = decodeHtml(title);
+      const plain = decodeHtml(desc.replace(/<[^>]+>/g,'').replace(/\s+/g,' ').trim()).slice(0,150);
+      if (!title || !link) return;
+      out.push({ title, link:link.trim(), description:plain,
+        pubDate: pub ? new Date(pub) : new Date(0), imageUrl:img,
+        source:feedMeta.source, category:feedMeta.category });
+    } catch {}
+  });
+  return out;
+}
+const tx = (el, tag) => el.querySelector(tag)?.textContent?.trim() || '';
+
+// ═══════════════════════════════════════
+//  FETCH (with 1 retry)
+// ═══════════════════════════════════════
+async function fetchFeed(feed, retry=1) {
+  const url = `${PROXY}?url=${encodeURIComponent(feed.url)}`;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return parseRSS(await res.text(), feed);
+  } catch(e) {
+    if (retry > 0) { await sleep(1500); return fetchFeed(feed, retry-1); }
+    throw e;
+  }
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ═══════════════════════════════════════
+//  BALANCED PICK (round-robin)
+// ═══════════════════════════════════════
+function balancedPick(byCategory, total) {
+  const cats  = Object.keys(byCategory).filter(c => byCategory[c].length);
+  if (!cats.length) return [];
+  const pools = {};
+  cats.forEach(c => pools[c] = [...byCategory[c]]);
+  const out = [];
+  let round = 0;
+  while (out.length < total) {
+    let added = false;
+    for (const cat of cats) {
+      if (out.length >= total) break;
+      if (pools[cat].length > round) { out.push(pools[cat][round]); added = true; }
+    }
+    round++;
+    if (!added) break;
+  }
+  return out;
+}
+
+// ═══════════════════════════════════════
+//  REFRESH
+// ═══════════════════════════════════════
+async function refresh() {
+  const btn  = document.getElementById('refreshBtn');
+  const load = document.getElementById('loadingOverlay');
+  const grid = document.getElementById('grid');
+  const err  = document.getElementById('errorMsg');
+
+  btn.disabled = true; btn.classList.add('spinning');
+  load.classList.add('show'); grid.innerHTML = '';
+  err.classList.remove('show');
+  document.getElementById('emptyMsg').classList.remove('show');
+  document.getElementById('progressLabel').textContent = `0 / ${FEEDS.length}`;
+  document.getElementById('progressBar').style.width = '0%';
+
+  let done = 0;
+  const tick = () => {
+    done++;
+    document.getElementById('progressLabel').textContent = `${done} / ${FEEDS.length}`;
+    document.getElementById('progressBar').style.width = `${done/FEEDS.length*100}%`;
+  };
+
+  const results = await Promise.allSettled(
+    FEEDS.map(f => fetchFeed(f).then(a => { tick(); return {f,a,ok:true}; })
+                               .catch(e => { tick(); console.warn(f.source, e.message); return {f,a:[],ok:false}; }))
+  );
+
+  const byCategory = {};
+  const errors = [];
+  results.forEach(r => {
+    if (r.status !== 'fulfilled') return;
+    const {f, a, ok} = r.value;
+    if (!ok || !a.length) { if (!ok) errors.push(f.source); return; }
+    if (!byCategory[f.category]) byCategory[f.category] = [];
+    a.sort((x,y) => y.pubDate - x.pubDate);
+    byCategory[f.category].push(...a);
+  });
+
+  // dedup by title per category
+  Object.keys(byCategory).forEach(cat => {
+    const seen = new Set();
+    byCategory[cat] = byCategory[cat].filter(a => { if(seen.has(a.title)) return false; seen.add(a.title); return true; });
+  });
+
+  allArticles = balancedPick(byCategory, TOTAL);
+
+  load.classList.remove('show'); btn.disabled = false; btn.classList.remove('spinning');
+
+  if (errors.length) {
+    err.textContent = `⚠️ 取得できなかったフィード: ${errors.join(', ')}`;
+    err.classList.add('show');
+  }
+
+  nextRefreshAt = Date.now() + INTERVAL_MS;
+  startCountdown();
+  clearTimeout(rfTimer);
+  rfTimer = setTimeout(refresh, INTERVAL_MS);
+
+  document.getElementById('articleCount').innerHTML = `<b>${allArticles.length}</b> 件`;
+  renderArticles(currentCat);
+}
+
+// ═══════════════════════════════════════
+//  RENDER
+// ═══════════════════════════════════════
+function renderArticles(cat) {
+  const grid     = document.getElementById('grid');
+  const emptyMsg = document.getElementById('emptyMsg');
+  const list     = cat === 'all' ? allArticles : allArticles.filter(a => a.category === cat);
+
+  if (!list.length) { grid.innerHTML = ''; emptyMsg.classList.add('show'); return; }
+  emptyMsg.classList.remove('show');
+
+  grid.innerHTML = list.map((a, i) => {
+    const idx   = allArticles.indexOf(a);
+    const color = CAT_COLORS[a.category] || '#666';
+
+    // 画像エリア
+    const imgHtml = a.imageUrl
+      ? `<img class="card-img" src="${esc(a.imageUrl)}" alt="" loading="lazy"
+           onerror="this.nextElementSibling.style.display='flex';this.remove()">`
+      : '';
+    const placeholder = `
+      <div class="card-img-placeholder"${!a.imageUrl ? ` data-article-url="${esc(a.link)}"` : ''} style="${a.imageUrl ? 'display:none' : ''}">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#b5a898" stroke-width="1.5">
+          <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
+          <path d="M21 15l-5-5L5 21"/>
+        </svg>
+        <span>No Image</span>
+      </div>`;
+
+    return `
+    <article class="card" style="animation-delay:${i*25}ms">
+      <a class="card-link" href="${esc(a.link)}" target="_blank" rel="noopener noreferrer">
+        ${imgHtml}${placeholder}
+        <div class="card-body">
+          <div class="card-meta">
+            <span class="cat-tag" style="background:${color}">${a.category}</span>
+            <span class="source">${esc(a.source)}</span>
+          </div>
+          <div class="card-title">${esc(a.title)}</div>
+          ${a.description ? `<div class="card-desc">${esc(a.description)}</div>` : ''}
+          <div class="card-date">${fmtDate(a.pubDate)}</div>
+        </div>
+      </a>
+      <div class="card-footer">
+        <button class="btn-chat" onclick="openChatView(${idx})">この記事について聞く</button>
+        <a class="btn-read" href="${esc(a.link)}" target="_blank" rel="noopener">読む ↗</a>
+      </div>
+    </article>`;
+  }).join('');
+
+  // RSSに画像のない記事はOGPから非同期取得
+  loadOgpImages();
+}
+
+// ═══════════════════════════════════════
+//  OGP IMAGE FETCH
+// ═══════════════════════════════════════
+async function loadOgpImages() {
+  const placeholders = document.querySelectorAll('.card-img-placeholder[data-article-url]');
+  Array.from(placeholders).forEach(async (ph) => {
+    const articleUrl = ph.dataset.articleUrl;
+    try {
+      const res = await fetch(`${PROXY}?mode=ogp&url=${encodeURIComponent(articleUrl)}`,
+        { signal: AbortSignal.timeout(10000) });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.ogImage) {
+        const img = document.createElement('img');
+        img.className = 'card-img';
+        img.src = data.ogImage;
+        img.alt = '';
+        img.loading = 'lazy';
+        img.onerror = () => img.remove();
+        ph.parentNode.insertBefore(img, ph);
+        ph.style.display = 'none';
+      }
+    } catch {}
+  });
+}
+
+// ═══════════════════════════════════════
+//  AI SUMMARY (on-demand in chat)
+// ═══════════════════════════════════════
+async function fetchSummary(title, desc, url, key) {
+  const r = await fetch(CLAUDE_API, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: CLAUDE_MODEL, max_tokens: 200,
+      messages: [{ role: 'user', content:
+        `以下の記事を日本語で3文以内に要約してください。要約のみ返してください。\n\nタイトル: ${title}\n本文冒頭: ${desc}\nURL: ${url}` }],
+    }),
+  });
+  if (!r.ok) throw new Error(`API ${r.status}`);
+  const d = await r.json();
+  return d.content?.[0]?.text?.trim() || '';
+}
+
+// ═══════════════════════════════════════
+//  FILTER
+// ═══════════════════════════════════════
+function filterCat(cat, btn) {
+  currentCat = cat;
+  document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderArticles(cat);
+}
+
+// ═══════════════════════════════════════
+//  CHAT VIEW
+// ═══════════════════════════════════════
+function openChatView(idx) {
+  chatArticle = allArticles[idx];
+  if (!chatArticle) return;
+  chatHistory = [];
+
+  document.getElementById('chatArticleSource').textContent = `${chatArticle.source} · ${chatArticle.category}`;
+  document.getElementById('chatArticleTitle').textContent  = chatArticle.title;
+  document.getElementById('chatArticleLink').href          = chatArticle.link;
+
+  document.getElementById('chatMessages').innerHTML = '';
+
+  document.getElementById('listView').style.display = 'none';
+  const cv = document.getElementById('chatView');
+  cv.style.display = 'flex'; cv.classList.add('show');
+  document.getElementById('chatInput').value = '';
+
+  const bar = document.getElementById('chatSummaryBar');
+
+  if (!getApiKey()) {
+    document.getElementById('chatMessages').innerHTML = `<div class="no-api-notice">AIチャットにはClaude APIキーが必要です。<br>
+      <button onclick="openApiModal()">APIキーを設定する</button></div>`;
+    document.getElementById('chatInputArea').style.display = 'none';
+    bar.innerHTML = '';
+    return;
+  }
+
+  document.getElementById('chatInputArea').style.display = 'flex';
+
+  // キャッシュ済みなら即表示、なければボタンを表示
+  const cached = summaryCache[chatArticle.link];
+  if (cached) {
+    showSummaryInBar(cached);
+  } else {
+    bar.innerHTML = `<button id="summaryBtn" onclick="generateSummary()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/>
+      </svg>
+      この記事を要約する</button>`;
+  }
+
+  const intro = `「${chatArticle.title}」についてお答えします！何でも聞いてください😊`;
+  appendMsg('assistant', intro);
+  chatHistory = [
+    { role: 'user',      content: `記事「${chatArticle.title}」（URL: ${chatArticle.link}）の会話を始めます。` },
+    { role: 'assistant', content: intro },
+  ];
+
+  setTimeout(() => document.getElementById('chatInput').focus(), 100);
+}
+
+async function generateSummary() {
+  const key = getApiKey();
+  if (!key) return;
+  const btn = document.getElementById('summaryBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '要約を生成中…'; }
+  try {
+    const summary = await fetchSummary(chatArticle.title, chatArticle.description, chatArticle.link, key);
+    summaryCache[chatArticle.link] = summary;
+    saveSummaryCache();
+    showSummaryInBar(summary);
+  } catch {
+    if (btn) { btn.disabled = false; btn.textContent = 'この記事を要約する'; }
+  }
+}
+
+function showSummaryInBar(text) {
+  const bar = document.getElementById('chatSummaryBar');
+  bar.innerHTML = `<div class="summary-bar-label">AI 要約</div><div class="summary-bar-text">${esc(text)}</div>`;
+}
+
+function closeChatView() {
+  document.getElementById('chatView').style.display = 'none';
+  document.getElementById('chatView').classList.remove('show');
+  document.getElementById('listView').style.display = 'block';
+}
+
+async function sendChat() {
+  const input   = document.getElementById('chatInput');
+  const sendBtn = document.getElementById('chatSendBtn');
+  const msg     = input.value.trim();
+  if (!msg || sendBtn.disabled) return;
+
+  input.value = ''; input.style.height = '';
+  appendMsg('user', msg);
+  chatHistory.push({ role:'user', content:msg });
+  sendBtn.disabled = true;
+
+  const tid = appendTyping();
+  try {
+    const r = await fetch(CLAUDE_API, {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'x-api-key': getApiKey(),
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true',
+      },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL, max_tokens: 400,
+        system: `あなたは親しみやすいニュースアシスタントです。フレンドリーな口調で、3文以内を目安に分かりやすく答えてください。
+記事: 「${chatArticle.title}」
+URL: ${chatArticle.link}
+カテゴリー: ${chatArticle.category}
+${summaryCache[chatArticle.link] ? `要約: ${summaryCache[chatArticle.link]}` : ''}`,
+        messages: chatHistory.slice(-14),
+      }),
+    });
+    const d     = await r.json();
+    const reply = d.content?.[0]?.text?.trim() || '（応答を取得できませんでした）';
+    removeMsg(tid);
+    appendMsg('assistant', reply);
+    chatHistory.push({ role:'assistant', content:reply });
+  } catch(e) {
+    removeMsg(tid);
+    appendMsg('assistant', `エラーが発生しました: ${e.message}`);
+  }
+  sendBtn.disabled = false;
+  document.getElementById('chatInput').focus();
+}
+
+function chatKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+}
+function autoResize(el) {
+  el.style.height = '';
+  el.style.height = Math.min(el.scrollHeight, 130) + 'px';
+}
+
+// アバターSVG
+const SVG_ASSISTANT = `<svg width="16" height="16" viewBox="0 0 24 24" fill="#8b5c3e" xmlns="http://www.w3.org/2000/svg">
+  <path d="M20 2H4C2.9 2 2 2.9 2 4v12c0 1.1.9 2 2 2h4l4 4 4-4h4c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+</svg>`;
+const SVG_USER = `<svg width="15" height="15" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+  <path d="M12 12c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm0 2c-3.33 0-10 1.67-10 5v2h20v-2c0-3.33-6.67-5-10-5z"/>
+</svg>`;
+
+let _mid = 0;
+function appendMsg(role, content) {
+  const id  = 'msg-' + (++_mid);
+  const el  = document.createElement('div');
+  el.id     = id;
+  el.className = `msg ${role}`;
+  const avatar = role === 'user' ? SVG_USER : SVG_ASSISTANT;
+  el.innerHTML = `
+    <div class="msg-avatar">${avatar}</div>
+    <div class="msg-bubble">${esc(content).replace(/\n/g,'<br>')}</div>`;
+  const msgs = document.getElementById('chatMessages');
+  msgs.appendChild(el);
+  msgs.scrollTop = msgs.scrollHeight;
+  return id;
+}
+function appendTyping() {
+  const id = 'msg-' + (++_mid);
+  const el = document.createElement('div');
+  el.id    = id; el.className = 'msg assistant';
+  el.innerHTML = `
+    <div class="msg-avatar">${SVG_ASSISTANT}</div>
+    <div class="msg-bubble" style="color:var(--text2)">
+      <span class="typing-dot">●</span><span class="typing-dot">●</span><span class="typing-dot">●</span>
+    </div>`;
+  const msgs = document.getElementById('chatMessages');
+  msgs.appendChild(el); msgs.scrollTop = msgs.scrollHeight;
+  return id;
+}
+function removeMsg(id) { document.getElementById(id)?.remove(); }
+
+// ═══════════════════════════════════════
+//  COUNTDOWN
+// ═══════════════════════════════════════
+function startCountdown() {
+  clearInterval(cdTimer);
+  cdTimer = setInterval(() => {
+    const rem = nextRefreshAt - Date.now();
+    if (rem <= 0) { document.getElementById('countdown').textContent = ''; return; }
+    const m = Math.floor(rem/60000), s = Math.floor((rem%60000)/1000);
+    document.getElementById('countdown').textContent = `次の更新まで ${m}:${String(s).padStart(2,'0')}`;
+  }, 1000);
+}
+
+// ═══════════════════════════════════════
+//  UTILS
+// ═══════════════════════════════════════
+
+// HTMLエンティティ（&#12300; 「 &amp; など）を文字列に戻す
+function decodeHtml(str) {
+  const el = document.createElement('textarea');
+  el.innerHTML = String(str);
+  return el.value;
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmtDate(d) {
+  if (!d || d.getTime()===0) return '';
+  const diff = Date.now() - d;
+  if (diff < 3600000)   return `${Math.floor(diff/60000)}分前`;
+  if (diff < 86400000)  return `${Math.floor(diff/3600000)}時間前`;
+  if (diff < 604800000) return `${Math.floor(diff/86400000)}日前`;
+  return d.toLocaleDateString('ja-JP',{month:'short',day:'numeric'});
+}
+
+// ═══════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════
+summaryCache = loadSummaryCache();
+updateAiBadge();
+refresh();
+</script>
+</body>
+</html>
