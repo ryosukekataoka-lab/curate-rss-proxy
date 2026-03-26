@@ -711,9 +711,16 @@ async function refresh() {
 function renderArticles(cat) {
   const grid     = document.getElementById('grid');
   const emptyMsg = document.getElementById('emptyMsg');
-  const list     = cat === 'all' ? allArticles : allArticles.filter(a => a.category === cat);
+  const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+  const base = cat === 'all' ? allArticles : allArticles.filter(a => a.category === cat);
+  const list = base.filter(a => a.pubDate > twoDaysAgo);
 
-  if (!list.length) { grid.innerHTML = ''; emptyMsg.classList.add('show'); return; }
+  if (!list.length) {
+    grid.innerHTML = '';
+    emptyMsg.textContent = base.length ? '最近の記事はありません（2日以内の記事がありません）' : 'このカテゴリーの記事は今回のキュレーションに含まれていません。';
+    emptyMsg.classList.add('show');
+    return;
+  }
   emptyMsg.classList.remove('show');
 
   grid.innerHTML = list.map((a, i) => {
